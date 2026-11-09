@@ -1,6 +1,6 @@
 ![alt text](microservice.png)
 
-## orchestrator mode: plan-and-execute
+## Overview
 Every call is request–response: orchestrator → agent → back to orchestrator. The order is:
 
 ```
