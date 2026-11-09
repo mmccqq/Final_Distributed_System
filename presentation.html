@@ -1,0 +1,724 @@
+<title>Multi-Agent Microservices Proposal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a stack of 16:9 slide cards (document mode) that becomes one-slide-per-screen in present mode; teal = agents, indigo = tools, red = faults, amber = what was added to the original deck */
+:root {
+  --bg: #e9eff0;
+  --slide: #ffffff;
+  --ink: #14262b;
+  --muted: #56696e;
+  --line: #c9d5d7;
+  --accent: #17798e;
+  --accent-soft: #dcf0f3;
+  --on-accent: #ffffff;
+  --tool: #4553a8;
+  --tool-soft: #e5e8fa;
+  --fault: #b93a26;
+  --fault-soft: #fbe4df;
+  --ok: #2b7649;
+  --ok-soft: #dff2e6;
+  --new: #9a5600;
+  --new-soft: #fbecd5;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d181b; --slide: #142328; --ink: #e2eef0; --muted: #91a5aa; --line: #2a3d42;
+    --accent: #4db6ca; --accent-soft: #173a42; --on-accent: #06181c;
+    --tool: #9aa6f2; --tool-soft: #232a4d; --fault: #f07b62; --fault-soft: #3b201a;
+    --ok: #6cc48d; --ok-soft: #173326; --new: #f0aa48; --new-soft: #3a2a10;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d181b; --slide: #142328; --ink: #e2eef0; --muted: #91a5aa; --line: #2a3d42;
+  --accent: #4db6ca; --accent-soft: #173a42; --on-accent: #06181c;
+  --tool: #9aa6f2; --tool-soft: #232a4d; --fault: #f07b62; --fault-soft: #3b201a;
+  --ok: #6cc48d; --ok-soft: #173326; --new: #f0aa48; --new-soft: #3a2a10;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body);
+  font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+p { margin: 0; }
+button { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* toolbar */
+.toolbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  padding-block: 10px; max-width: 1180px; margin: 0 auto 24px;
+}
+.toolbar .name { font-family: var(--f-display); font-weight: 700; font-size: 16px; margin-right: auto; }
+.toolbar .count { font-family: var(--f-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.btn {
+  border: 1px solid var(--line); background: var(--slide); color: var(--ink);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn[aria-pressed="true"] { background: var(--new-soft); border-color: var(--new); color: var(--new); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 36px; }
+
+/* review panel (not part of the deck) */
+.review { background: var(--slide); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; display: grid; gap: 14px; }
+.review summary { cursor: pointer; font-family: var(--f-display); font-weight: 700; font-size: 20px; }
+.review > p { color: var(--muted); max-width: 72ch; }
+.status { display: inline-block; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.status.miss { background: var(--fault-soft); color: var(--fault); }
+.status.part { background: var(--new-soft); color: var(--new); }
+.status.ok { background: var(--ok-soft); color: var(--ok); }
+
+/* slide frame */
+.frame { container-type: inline-size; display: grid; gap: 10px; scroll-margin-top: 72px; }
+.slide {
+  position: relative; aspect-ratio: 16 / 9; background: var(--slide);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 4cqw 5cqw; display: flex; flex-direction: column; gap: 2cqw;
+  font-size: clamp(13px, 1.55cqw, 20px); line-height: 1.45;
+}
+.kicker { font-family: var(--f-mono); font-size: 0.72em; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.slide h2 { font-size: clamp(22px, 3.5cqw, 46px); font-weight: 700; line-height: 1.1; }
+.slide h3 { font-size: 1.05em; font-weight: 700; }
+.lede { font-size: 1.1em; max-width: 60ch; }
+.muted { color: var(--muted); }
+.small { font-size: 0.82em; }
+.mono { font-family: var(--f-mono); }
+.slide ul { margin: 0; padding-left: 1.1em; display: grid; gap: 0.45em; }
+.slide li::marker { color: var(--accent); }
+.cols { display: grid; gap: 2.4cqw; grid-template-columns: 1fr 1fr; align-items: start; }
+.cols.c3 { grid-template-columns: repeat(3, 1fr); }
+.cols.c4 { grid-template-columns: repeat(4, 1fr); }
+.cols > * { min-width: 0; }
+.stack { display: grid; gap: 0.7em; align-content: start; }
+.box { border: 1px solid var(--line); border-radius: 6px; padding: 1.1em 1.2em; display: grid; gap: 0.5em; align-content: start; }
+.box.tint { background: var(--accent-soft); border-color: transparent; }
+.cite { font-size: 0.74em; color: var(--muted); }
+.notes { font-size: 14px; color: var(--muted); padding: 0 4px; max-width: 90ch; }
+.notes b { color: var(--ink); font-weight: 600; }
+
+/* added / expanded marks */
+.mark {
+  position: absolute; top: 1.6cqw; right: 1.6cqw;
+  font-family: var(--f-mono); font-size: clamp(10px, 0.95cqw, 13px); letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 99px; border: 1px dashed var(--new); color: var(--new); background: var(--new-soft);
+}
+.add { box-shadow: inset 3px 0 0 var(--new); padding-left: 0.8em; }
+body.hide-marks .mark { display: none; }
+body.hide-marks .add { box-shadow: none; padding-left: 0; }
+
+/* title slide */
+.slide.title { background: var(--accent); color: var(--on-accent); border-color: var(--accent); justify-content: space-between; }
+.slide.title .kicker { color: var(--on-accent); opacity: 0.85; }
+.slide.title h1 { font-size: clamp(28px, 5.6cqw, 74px); line-height: 1.02; font-weight: 700; max-width: 18ch; }
+.slide.title .team { font-size: 1.15em; }
+.slide.title .mark { display: none; }
+.chain { display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center; font-family: var(--f-mono); font-size: 0.85em; }
+.chain span { border: 1px solid currentColor; border-radius: 4px; padding: 0.15em 0.55em; }
+.chain i { font-style: normal; opacity: 0.7; }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; min-width: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86em; }
+th, td { text-align: left; vertical-align: top; padding: 0.5em 0.8em 0.5em 0; border-bottom: 1px solid var(--line); }
+th { font-family: var(--f-mono); font-weight: 500; font-size: 0.85em; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-weight: 600; }
+.review table { font-size: 14px; }
+
+/* deployment-unit mini diagrams */
+.variant { border: 1px solid var(--line); border-radius: 6px; padding: 1em; display: grid; gap: 0.7em; align-content: start; }
+.variant h3 { font-size: 0.98em; }
+.units { display: flex; flex-wrap: wrap; gap: 0.35em; }
+.unit { border: 1.5px dashed var(--muted); border-radius: 5px; padding: 0.25em; display: flex; flex-wrap: wrap; gap: 0.2em; }
+.chip { font-family: var(--f-mono); font-size: 0.78em; font-weight: 500; width: 1.9em; height: 1.9em; display: grid; place-items: center; border-radius: 3px; }
+.chip.a { background: var(--accent-soft); color: var(--accent); }
+.chip.t { background: var(--tool-soft); color: var(--tool); }
+.chip.hot { outline: 2px solid var(--fault); outline-offset: -2px; }
+.hops { font-family: var(--f-mono); font-size: 0.8em; color: var(--muted); }
+.hops b { color: var(--ink); font-size: 1.25em; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.4em 1.4em; align-items: center; font-size: 0.8em; color: var(--muted); }
+.legend span { display: inline-flex; gap: 0.4em; align-items: center; }
+
+/* scaling rows */
+.scale-row { display: grid; grid-template-columns: 11em 1fr; gap: 1em; align-items: center; }
+.scale-row > * { min-width: 0; }
+
+/* fault timeline */
+.timeline { display: grid; gap: 0.4em; }
+.tl-bar { display: flex; height: 3.2em; border-radius: 5px; overflow: hidden; border: 1px solid var(--line); }
+.tl-bar div { display: grid; place-items: center; text-align: center; font-size: 0.75em; line-height: 1.2; padding: 0 0.3em; border-right: 1px solid var(--line); }
+.tl-bar div:last-child { border-right: 0; }
+.ph-steady { background: var(--slide); color: var(--muted); }
+.ph-fault { background: var(--fault-soft); color: var(--fault); font-weight: 600; }
+.ph-rec { background: var(--ok-soft); color: var(--ok); }
+.tl-axis { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 0.7em; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* svg diagram */
+.diagram { width: 100%; height: auto; display: block; }
+.diagram text { font-family: var(--f-body); fill: var(--ink); }
+.diagram .t-name { font-size: 15px; font-weight: 600; }
+.diagram .t-sub { font-size: 12px; fill: var(--muted); }
+.diagram .t-lbl { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); }
+.diagram .t-grp-a { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.1em; fill: var(--accent); }
+.diagram .t-grp-t { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.1em; fill: var(--tool); }
+.diagram .n { fill: var(--slide); stroke: var(--line); stroke-width: 1.5; }
+.diagram .n-a { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+.diagram .n-a-shadow { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; opacity: 0.45; }
+.diagram .n-t { fill: var(--tool-soft); stroke: var(--tool); stroke-width: 1.2; }
+.diagram .n-t-shadow { fill: var(--tool-soft); stroke: var(--tool); stroke-width: 1; opacity: 0.45; }
+.diagram .g-a { fill: none; stroke: var(--accent); stroke-width: 1.3; stroke-dasharray: 6 5; }
+.diagram .g-t { fill: none; stroke: var(--tool); stroke-width: 1.3; stroke-dasharray: 6 5; }
+.diagram .obs { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.diagram .edge { stroke: var(--ink); stroke-width: 1.6; fill: none; }
+.diagram .arrowhead { fill: var(--ink); }
+
+@container (max-width: 760px) {
+  .cols, .cols.c3 { grid-template-columns: 1fr; }
+  .cols.c4 { grid-template-columns: 1fr 1fr; }
+  .slide { aspect-ratio: auto; padding: 22px 20px; gap: 16px; }
+  .scale-row { grid-template-columns: 1fr; gap: 0.4em; }
+}
+@container (max-width: 420px) { .cols.c4 { grid-template-columns: 1fr; } }
+
+/* present mode */
+html.present-root { scroll-snap-type: y mandatory; }
+body.present { padding-block: 0; }
+body.present .toolbar, body.present .review, body.present .notes { display: none; }
+body.present .wrap { gap: 0; max-width: none; }
+body.present .frame { height: 100vh; display: grid; place-items: center; scroll-snap-align: start; scroll-margin-top: 0; }
+body.present .slide { width: min(96vw, calc(94vh * 16 / 9)); }
+
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<header class="toolbar">
+  <span class="name">Multi-agent microservices · proposal</span>
+  <span class="count" id="count">1 / 12</span>
+  <button class="btn" id="toggleMarks" aria-pressed="true" type="button">Showing added content</button>
+  <button class="btn primary" id="present" type="button">Present</button>
+</header>
+
+<main class="wrap">
+
+  <details class="review" open>
+    <summary>Review of the original deck against the proposal brief</summary>
+    <p>The brief asks four questions. Amber marks in the slides below show what was added or expanded to answer each. Use the button above to hide the marks before presenting.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Brief question</th><th>Original deck</th><th>What was missing</th><th>Now on</th></tr></thead>
+        <tbody>
+          <tr><td>What problem, and why it matters to stakeholders</td><td><span class="status part">Partial</span></td><td>Problem is stated, but no stakeholders, no evidence that the problem exists, and no concrete multi-agent app to build.</td><td>Slides 2–3</td></tr>
+          <tr><td>How you will evaluate and observe it</td><td><span class="status part">Partial</span></td><td>Experiments are good. Missing: the workload, hypotheses, what "saturates" means, which resilience mechanisms. Experiment 2 says "both architectures" while Experiment 1 has four. The observation slide names tools but not what each measures, and "lock contention" is not tied to anything.</td><td>Slides 5–9</td></tr>
+          <tr><td>How it is a distributed system</td><td><span class="status miss">Missing</span></td><td>No architecture, no components, no communication or deployment model.</td><td>Slides 4, 10</td></tr>
+          <tr><td>How it ties to course concepts</td><td><span class="status miss">Missing</span></td><td>Not addressed.</td><td>Slide 11</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small">Slide 12 (stack, risks, milestones) is not required for the proposal but sets you up for the 11/23 charter. Drop it if you run over 5 minutes.</p>
+  </details>
+
+  <!-- 1 -->
+  <section class="frame" id="s1">
+    <div class="slide title">
+      <span class="kicker">CS 6650 · Final project proposal · 26 Oct 2026</span>
+      <h1>Evaluating a Microservices Architecture for Scalable Multi-Agent AI Systems</h1>
+      <div class="stack">
+        <div class="chain"><span>Planner</span><i>→</i><span>Researcher</span><i>+</i><span>Analyst</span><i>→</i><span>Writer</span></div>
+        <p class="team">Francis · Luochun Xiao · Xinyue Xuan · Xuetao Li</p>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> We want to find out when splitting a multi-agent AI app into microservices pays off, and when it only adds network cost.</p>
+  </section>
+
+  <!-- 2 -->
+  <section class="frame" id="s2">
+    <div class="slide">
+      <span class="mark">Expanded</span>
+      <span class="kicker">02 · Problem</span>
+      <h2>Agents in one app have very different resource needs</h2>
+      <div class="cols">
+        <div class="stack">
+          <ul>
+            <li>Multi-agent AI apps chain agents and tools that differ in cost: one waits on an LLM, one is I/O-bound on search, one burns CPU running code.</li>
+            <li>A monolith scales them together, so you pay for idle parts to relieve one bottleneck.</li>
+            <li>Splitting into microservices allows independent scaling, but adds network hops, coordination, and new partial-failure modes.</li>
+          </ul>
+          <div class="box add">
+            <h3>Evidence the trade-off is real</h3>
+            <p class="small">Fan-out systems are ruled by their slowest call (Dean &amp; Barroso, <i>The Tail at Scale</i>, CACM 2013). Microservice graphs move bottlenecks into RPC and networking (Gan et al., <i>DeathStarBench</i>, ASPLOS 2019). Prime Video moved one pipeline from microservices back to a monolith and cut its cost by 90% (Prime Video Tech blog, 2023).</p>
+          </div>
+        </div>
+        <div class="box tint add">
+          <h3>Stakeholders</h3>
+          <ul class="small">
+            <li><b>Teams building agent products</b> (support copilots, research assistants) need latency that stays flat as users grow.</li>
+            <li><b>Platform and SRE engineers</b> must choose a deployment shape and want evidence for when to split.</li>
+            <li><b>Cost owners</b> pay for compute and LLM calls; scaling everything to fix one agent wastes money.</li>
+            <li><b>End users</b> should not see the whole answer hang because one tool is slow.</li>
+          </ul>
+          <p class="cite">Popular frameworks such as AutoGen, LangGraph and CrewAI run agents in one process by default; how to distribute them is left to the deployer.</p>
+        </div>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> Name the stakeholder first. "If you run an agent product, you have to decide how to deploy it, and nobody gives you numbers." Then cite the Prime Video case to show splitting is not always right.</p>
+  </section>
+
+  <!-- 3 -->
+  <section class="frame" id="s3">
+    <div class="slide">
+      <span class="mark">Added</span>
+      <span class="kicker">03 · What we build</span>
+      <h2>A research-assistant pipeline with a realistic task mix</h2>
+      <div class="cols">
+        <div class="stack">
+          <p>A user submits a question. The <b>Planner</b> splits it into steps, the <b>Researcher</b> and <b>Analyst</b> run in parallel, and the <b>Writer</b> merges the result.</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Task type</th><th>Share</th><th>Path</th></tr></thead>
+              <tbody>
+                <tr><td>Quick answer</td><td class="mono">60%</td><td>Planner → Writer</td></tr>
+                <tr><td>Research</td><td class="mono">30%</td><td>+ Researcher → Web search, Vector store</td></tr>
+                <tr><td>Analysis</td><td class="mono">10%</td><td>+ Analyst → Code sandbox (CPU-heavy)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small muted">The mix is a starting point and a variable we can change: shifting it moves the bottleneck from one service to another.</p>
+        </div>
+        <div class="box tint">
+          <h3>Why a mock LLM</h3>
+          <p class="small">Real LLM APIs are costly, rate-limited and noisy, which would swamp our measurements. A mock LLM service returns canned text after a delay drawn from a configurable distribution, and can inject errors.</p>
+          <p class="small">This keeps runs repeatable and lets us study the architecture, not the model provider. One small run against a real API checks that the mock is realistic.</p>
+        </div>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> The point of the mix is heterogeneity. If every task looked the same there would be nothing to scale independently.</p>
+  </section>
+
+  <!-- 4 -->
+  <section class="frame" id="s4">
+    <div class="slide">
+      <span class="mark">Added</span>
+      <span class="kicker">04 · Architecture (fully decomposed variant)</span>
+      <h2>Every agent and tool is its own service on AWS ECS</h2>
+      <svg class="diagram" viewBox="0 0 920 500" role="img" aria-label="Architecture: Locust sends load through an ALB to an orchestrator, which calls four agent services. Agents call three tool services and a mock LLM. The orchestrator keeps task state in Redis. All services export metrics.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker>
+        </defs>
+        <!-- client + lb -->
+        <rect class="n" x="10" y="190" width="110" height="80" rx="8"/>
+        <text class="t-name" x="65" y="225" text-anchor="middle">Locust</text>
+        <text class="t-sub" x="65" y="245" text-anchor="middle">load generator</text>
+        <rect class="n" x="150" y="190" width="90" height="80" rx="8"/>
+        <text class="t-name" x="195" y="225" text-anchor="middle">ALB</text>
+        <text class="t-sub" x="195" y="245" text-anchor="middle">load balancer</text>
+        <!-- orchestrator -->
+        <rect class="n" x="270" y="175" width="150" height="110" rx="8"/>
+        <text class="t-name" x="345" y="206" text-anchor="middle">Orchestrator</text>
+        <text class="t-sub" x="345" y="228" text-anchor="middle">routes task steps</text>
+        <text class="t-sub" x="345" y="246" text-anchor="middle">timeouts · retries</text>
+        <text class="t-sub" x="345" y="264" text-anchor="middle">circuit breakers</text>
+        <!-- state store -->
+        <rect class="n" x="270" y="360" width="150" height="70" rx="8"/>
+        <text class="t-name" x="345" y="390" text-anchor="middle">Task state store</text>
+        <text class="t-sub" x="345" y="410" text-anchor="middle">Redis · idempotency keys</text>
+        <!-- agents group -->
+        <rect class="g-a" x="460" y="20" width="200" height="320" rx="12"/>
+        <text class="t-grp-a" x="560" y="44" text-anchor="middle">AGENT SERVICES</text>
+        <rect class="n-a-shadow" x="480" y="63" width="170" height="52" rx="6"/>
+        <rect class="n-a" x="475" y="58" width="170" height="52" rx="6"/>
+        <text class="t-name" x="560" y="80" text-anchor="middle">Planner</text>
+        <text class="t-sub" x="560" y="98" text-anchor="middle">splits the request</text>
+        <rect class="n-a-shadow" x="480" y="127" width="170" height="52" rx="6"/>
+        <rect class="n-a" x="475" y="122" width="170" height="52" rx="6"/>
+        <text class="t-name" x="560" y="144" text-anchor="middle">Researcher</text>
+        <text class="t-sub" x="560" y="162" text-anchor="middle">search + retrieval</text>
+        <rect class="n-a-shadow" x="480" y="191" width="170" height="52" rx="6"/>
+        <rect class="n-a" x="475" y="186" width="170" height="52" rx="6"/>
+        <text class="t-name" x="560" y="208" text-anchor="middle">Analyst</text>
+        <text class="t-sub" x="560" y="226" text-anchor="middle">runs code on data</text>
+        <rect class="n-a-shadow" x="480" y="255" width="170" height="52" rx="6"/>
+        <rect class="n-a" x="475" y="250" width="170" height="52" rx="6"/>
+        <text class="t-name" x="560" y="272" text-anchor="middle">Writer</text>
+        <text class="t-sub" x="560" y="290" text-anchor="middle">merges the answer</text>
+        <text class="t-lbl" x="560" y="328" text-anchor="middle">each its own ECS service, N replicas</text>
+        <!-- tools group -->
+        <rect class="g-t" x="720" y="20" width="190" height="250" rx="12"/>
+        <text class="t-grp-t" x="815" y="44" text-anchor="middle">TOOL SERVICES</text>
+        <rect class="n-t-shadow" x="740" y="63" width="160" height="52" rx="6"/>
+        <rect class="n-t" x="735" y="58" width="160" height="52" rx="6"/>
+        <text class="t-name" x="815" y="80" text-anchor="middle">Web search</text>
+        <text class="t-sub" x="815" y="98" text-anchor="middle">I/O-bound</text>
+        <rect class="n-t-shadow" x="740" y="127" width="160" height="52" rx="6"/>
+        <rect class="n-t" x="735" y="122" width="160" height="52" rx="6"/>
+        <text class="t-name" x="815" y="144" text-anchor="middle">Vector store</text>
+        <text class="t-sub" x="815" y="162" text-anchor="middle">memory-bound</text>
+        <rect class="n-t-shadow" x="740" y="191" width="160" height="52" rx="6"/>
+        <rect class="n-t" x="735" y="186" width="160" height="52" rx="6"/>
+        <text class="t-name" x="815" y="208" text-anchor="middle">Code sandbox</text>
+        <text class="t-sub" x="815" y="226" text-anchor="middle">CPU-bound</text>
+        <!-- mock llm -->
+        <rect class="n" x="720" y="290" width="190" height="56" rx="8"/>
+        <text class="t-name" x="815" y="314" text-anchor="middle">Mock LLM</text>
+        <text class="t-sub" x="815" y="333" text-anchor="middle">set latency &amp; error rate</text>
+        <!-- edges -->
+        <line class="edge" x1="120" y1="230" x2="148" y2="230" marker-end="url(#arr)"/>
+        <line class="edge" x1="240" y1="230" x2="268" y2="230" marker-end="url(#arr)"/>
+        <line class="edge" x1="420" y1="230" x2="458" y2="230" marker-end="url(#arr)"/>
+        <text class="t-lbl" x="439" y="220" text-anchor="middle">HTTP</text>
+        <line class="edge" x1="345" y1="287" x2="345" y2="358" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text class="t-lbl" x="355" y="327">read / write</text>
+        <line class="edge" x1="660" y1="150" x2="718" y2="150" marker-end="url(#arr)"/>
+        <text class="t-lbl" x="689" y="140" text-anchor="middle">tool call</text>
+        <line class="edge" x1="660" y1="318" x2="718" y2="318" marker-end="url(#arr)"/>
+        <text class="t-lbl" x="689" y="308" text-anchor="middle">prompt</text>
+        <!-- observability strip -->
+        <rect class="obs" x="10" y="450" width="900" height="40" rx="8"/>
+        <text class="t-sub" x="460" y="475" text-anchor="middle">Every service: /metrics → Prometheus → Grafana  ·  ECS CPU &amp; memory → CloudWatch  ·  trace ID passed on every hop</text>
+      </svg>
+    </div>
+    <p class="notes"><b>Say:</b> This is the most decomposed version. The monolith runs the same code in one container, with function calls instead of HTTP. Only the mock LLM is remote in every variant.</p>
+  </section>
+
+  <!-- 5 -->
+  <section class="frame" id="s5">
+    <div class="slide">
+      <span class="mark">Expanded</span>
+      <span class="kicker">05 · Research questions</span>
+      <h2>Two questions, each with a testable hypothesis</h2>
+      <div class="cols">
+        <div class="box">
+          <h3>RQ1 · Scalability</h3>
+          <p>How does microservice decomposition affect throughput and tail latency as workload increases?</p>
+          <p class="small add"><b>H1.</b> At low load the monolith has lower latency, because it makes no internal network hops. As load grows, the decomposed system sustains more throughput before saturating, because it can scale the busiest service alone.</p>
+          <p class="small add"><b>H2.</b> Scaling only the bottleneck service reaches the same throughput as scaling the whole monolith with fewer vCPUs.</p>
+        </div>
+        <div class="box">
+          <h3>RQ2 · Resilience</h3>
+          <p>How well do microservices and failure-isolation mechanisms keep the system working when parts fail?</p>
+          <p class="small add"><b>H3.</b> In the monolith, a slow or crashed agent ties up shared threads and slows every task type. In the decomposed system with timeouts, circuit breakers and bulkheads, only tasks that need the failed service are affected.</p>
+        </div>
+      </div>
+      <p class="small muted add">We would count either outcome as a result. If the monolith wins, we report the load level where the crossover would happen.</p>
+    </div>
+    <p class="notes"><b>Say:</b> Hypotheses make the experiments falsifiable. Say clearly that the monolith could win.</p>
+  </section>
+
+  <!-- 6 -->
+  <section class="frame" id="s6">
+    <div class="slide">
+      <span class="mark">Expanded</span>
+      <span class="kicker">06 · Experiment 1A · Architecture comparison</span>
+      <h2>Same code, four ways to draw the service boundaries</h2>
+      <div class="cols c4">
+        <div class="variant">
+          <h3>Monolith baseline</h3>
+          <div class="units"><div class="unit"><span class="chip a">P</span><span class="chip a">R</span><span class="chip a">A</span><span class="chip a">W</span><span class="chip t">S</span><span class="chip t">V</span><span class="chip t">C</span></div></div>
+          <p class="hops add">internal hops per research task <b>0</b></p>
+        </div>
+        <div class="variant">
+          <h3>Agents as services</h3>
+          <div class="units"><div class="unit"><span class="chip a">P</span></div><div class="unit"><span class="chip a">R</span><span class="chip t">S</span><span class="chip t">V</span></div><div class="unit"><span class="chip a">A</span><span class="chip t">C</span></div><div class="unit"><span class="chip a">W</span></div></div>
+          <p class="hops add">internal hops per research task <b>3</b></p>
+        </div>
+        <div class="variant">
+          <h3>Tools as services</h3>
+          <div class="units"><div class="unit"><span class="chip a">P</span><span class="chip a">R</span><span class="chip a">A</span><span class="chip a">W</span></div><div class="unit"><span class="chip t">S</span></div><div class="unit"><span class="chip t">V</span></div><div class="unit"><span class="chip t">C</span></div></div>
+          <p class="hops add">internal hops per research task <b>2</b></p>
+        </div>
+        <div class="variant">
+          <h3>Agents and tools</h3>
+          <div class="units"><div class="unit"><span class="chip a">P</span></div><div class="unit"><span class="chip a">R</span></div><div class="unit"><span class="chip a">A</span></div><div class="unit"><span class="chip a">W</span></div><div class="unit"><span class="chip t">S</span></div><div class="unit"><span class="chip t">V</span></div><div class="unit"><span class="chip t">C</span></div></div>
+          <p class="hops add">internal hops per research task <b>5</b></p>
+        </div>
+      </div>
+      <div class="legend"><span><span class="chip a">P</span> agent</span><span><span class="chip t">S</span> tool</span><span><span class="unit" style="padding:0.4em 0.9em"></span> one container / ECS service</span></div>
+      <div class="cols">
+        <p class="small add"><b>Load:</b> Locust steps up concurrent users (for example 10 → 400) and holds each step for a few minutes. Same task mix, same total vCPU budget for every variant, 3 repeats per step.</p>
+        <p class="small"><b>Metrics:</b> throughput, p50/p95/p99 latency, CPU and memory per service, and the <span class="add">saturation point: the highest load where p99 stays under the SLO (e.g. 5 s) and errors stay under 1%.</span></p>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> The hop count is the price each variant pays. Experiment 1A measures what that price buys.</p>
+  </section>
+
+  <!-- 7 -->
+  <section class="frame" id="s7">
+    <div class="slide">
+      <span class="mark">Expanded</span>
+      <span class="kicker">07 · Experiment 1B · Scaling strategy</span>
+      <h2>Scale everything, or scale only the bottleneck?</h2>
+      <div class="stack">
+        <div class="scale-row">
+          <h3>Scale the monolith ×3</h3>
+          <div class="units">
+            <div class="unit"><span class="chip a">P</span><span class="chip a hot">R</span><span class="chip a">A</span><span class="chip a">W</span><span class="chip t">S</span><span class="chip t">V</span><span class="chip t">C</span></div>
+            <div class="unit"><span class="chip a">P</span><span class="chip a hot">R</span><span class="chip a">A</span><span class="chip a">W</span><span class="chip t">S</span><span class="chip t">V</span><span class="chip t">C</span></div>
+            <div class="unit"><span class="chip a">P</span><span class="chip a hot">R</span><span class="chip a">A</span><span class="chip a">W</span><span class="chip t">S</span><span class="chip t">V</span><span class="chip t">C</span></div>
+          </div>
+        </div>
+        <div class="scale-row">
+          <h3>Scale only Researcher ×3</h3>
+          <div class="units">
+            <div class="unit"><span class="chip a">P</span></div>
+            <div class="unit"><span class="chip a hot">R</span></div><div class="unit"><span class="chip a hot">R</span></div><div class="unit"><span class="chip a hot">R</span></div>
+            <div class="unit"><span class="chip a">A</span></div><div class="unit"><span class="chip a">W</span></div>
+            <div class="unit"><span class="chip t">S</span></div><div class="unit"><span class="chip t">V</span></div><div class="unit"><span class="chip t">C</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cols">
+        <div class="stack">
+          <p class="small add">We first find the bottleneck from Experiment 1A (red outline), then compare both strategies under the same load. We also run ECS target-tracking autoscaling on CPU, as in homework 6, to see how fast each strategy reacts to a spike.</p>
+        </div>
+        <div class="stack">
+          <p class="small add"><b>Metrics:</b> peak throughput, total vCPU and memory used, throughput per vCPU, cost per 1,000 tasks, and time from scale-out decision to the new task serving traffic.</p>
+        </div>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> This is the claim people make for microservices, tested directly: do you really need fewer resources?</p>
+  </section>
+
+  <!-- 8 -->
+  <section class="frame" id="s8">
+    <div class="slide">
+      <span class="mark">Expanded</span>
+      <span class="kicker">08 · Experiment 2 · Fault tolerance</span>
+      <h2>Inject the same faults, with and without isolation</h2>
+      <div class="timeline add">
+        <div class="tl-bar">
+          <div class="ph-steady" style="flex:3">steady load</div>
+          <div class="ph-fault" style="flex:3">crash Researcher tasks</div>
+          <div class="ph-rec" style="flex:3">recovery</div>
+          <div class="ph-fault" style="flex:3">+2 s delay on Code sandbox</div>
+          <div class="ph-rec" style="flex:3">recovery</div>
+        </div>
+        <div class="tl-axis"><span>0 min</span><span>3</span><span>6</span><span>9</span><span>12</span><span>15</span></div>
+      </div>
+      <div class="cols">
+        <div class="stack">
+          <p class="small add"><b>Setup:</b> monolith vs. the fully decomposed variant, same load (about 60% of the saturation point) and same fault schedule. Each run turns on one mechanism at a time so we can see what each one contributes.</p>
+          <p class="small"><b>Metrics:</b> failure rate, p95 end-to-end latency, recovery time, task loss rate.</p>
+          <p class="small muted add">Recovery time: from the end of a fault until p95 is back within 10% of baseline. Lost task: accepted but never completed or failed.</p>
+        </div>
+        <div class="tbl-wrap add">
+          <table>
+            <thead><tr><th>Mechanism</th><th>Protects against</th></tr></thead>
+            <tbody>
+              <tr><td>Timeouts</td><td>callers hanging on a slow service</td></tr>
+              <tr><td>Retry + backoff + jitter</td><td>brief crashes, retry storms</td></tr>
+              <tr><td>Circuit breaker</td><td>repeated calls to a dead service</td></tr>
+              <tr><td>Bulkhead (per-service limits)</td><td>one dependency exhausting all workers</td></tr>
+              <tr><td>Queue + idempotency keys</td><td>lost or duplicated tasks on retry</td></tr>
+              <tr><td>Health checks + ECS restart</td><td>crashed tasks staying down</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> A crash and a slowdown fail differently. Slow services are often worse because callers keep waiting. The timeline lets us measure both in one run.</p>
+  </section>
+
+  <!-- 9 -->
+  <section class="frame" id="s9">
+    <div class="slide">
+      <span class="mark">Expanded</span>
+      <span class="kicker">09 · Observation</span>
+      <h2>Measure at four levels, from the client to a single request</h2>
+      <div class="cols c4">
+        <div class="box">
+          <span class="kicker">Client</span>
+          <h3>Locust</h3>
+          <p class="small">Offered load, throughput, p50/p95/p99, error counts. This is what users feel.</p>
+        </div>
+        <div class="box">
+          <span class="kicker">Service</span>
+          <h3>Prometheus + Grafana</h3>
+          <p class="small add">Per service: request rate, errors, latency. Also queue depth, in-flight requests per bulkhead, circuit-breaker state.</p>
+        </div>
+        <div class="box">
+          <span class="kicker">Infrastructure</span>
+          <h3>CloudWatch</h3>
+          <p class="small">CPU and memory per ECS task, <span class="add">running task count, ALB target response time</span>.</p>
+        </div>
+        <div class="box">
+          <span class="kicker">Request</span>
+          <h3>Traces and server logs</h3>
+          <p class="small add">A trace ID follows each task through every hop, so we can split latency into network vs. compute time.</p>
+          <p class="small">Server logs record lock wait time on the monolith's shared in-process state, to show where its contention comes from.</p>
+        </div>
+      </div>
+      <p class="small muted add">All four views use the same timestamps and run IDs, so a latency spike in Locust can be traced to the service and the hop that caused it.</p>
+    </div>
+    <p class="notes"><b>Say:</b> The lock-contention logs matter for the monolith: if it saturates, we want to show whether the cause is locks or CPU.</p>
+  </section>
+
+  <!-- 10 -->
+  <section class="frame" id="s10">
+    <div class="slide">
+      <span class="mark">Added</span>
+      <span class="kicker">10 · Why this is a distributed system</span>
+      <h2>Independent processes that share nothing but messages</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Property</th><th>Where it shows up in our system</th></tr></thead>
+          <tbody>
+            <tr><td>Separate machines</td><td>Each agent and tool runs as ECS tasks; replicas land on different hosts.</td></tr>
+            <tr><td>Message passing only</td><td>Orchestrator, agents and tools talk over HTTP/JSON. No shared memory.</td></tr>
+            <tr><td>Partial failure</td><td>One service can crash while others keep running; callers only learn about it through timeouts.</td></tr>
+            <tr><td>No global clock</td><td>Events across services are ordered with trace IDs and logical timestamps, not wall clocks.</td></tr>
+            <tr><td>Concurrency on shared state</td><td>Many tasks run at once; task state in Redis must stay correct when steps are retried.</td></tr>
+            <tr><td>Scale-out and load balancing</td><td>An ALB spreads requests; each service autoscales on its own.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> The monolith is our control. It runs the same logic without these properties, which is how we isolate their cost.</p>
+  </section>
+
+  <!-- 11 -->
+  <section class="frame" id="s11">
+    <div class="slide">
+      <span class="mark">Added</span>
+      <span class="kicker">11 · Course concepts</span>
+      <h2>What we use from the course, and where</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>From</th><th>In the project</th></tr></thead>
+          <tbody>
+            <tr><td>Containers, networking, Terraform</td><td>Weeks 1–2, HW 2</td><td>One Docker image per service; infra on ECS built with Terraform</td></tr>
+            <tr><td>Threads and concurrency</td><td>Week 3, HW 3</td><td>Goroutine worker pools in the monolith; lock contention; bulkhead limits</td></tr>
+            <tr><td>RPC</td><td>HW 3</td><td>Agent-to-tool calls; serialization and per-hop cost</td></tr>
+            <tr><td>MapReduce fan-out / fan-in</td><td>HW 4</td><td>Researcher and Analyst run in parallel; the slowest one sets the Writer's start time</td></tr>
+            <tr><td>Microservices and API contracts</td><td>Day 6, HW 5</td><td>An OpenAPI spec for each agent and tool</td></tr>
+            <tr><td>Load balancing and autoscaling</td><td>HW 6</td><td>ALB and per-service ECS autoscaling in Experiment 1B</td></tr>
+            <tr><td>Observability</td><td>HW 5–6</td><td>Prometheus, Grafana, CloudWatch, Locust</td></tr>
+            <tr><td>Logical time</td><td>Lamport paper</td><td>Ordering events across services in traces</td></tr>
+            <tr><td>Fault tolerance, consistency</td><td>Upcoming</td><td>Experiment 2; at-least-once delivery with idempotent task updates</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> Pick two rows to mention aloud, for example MapReduce fan-out and autoscaling. Don't read the whole table.</p>
+  </section>
+
+  <!-- 12 -->
+  <section class="frame" id="s12">
+    <div class="slide">
+      <span class="mark">Added</span>
+      <span class="kicker">12 · Plan</span>
+      <h2>Stack, risks and milestones</h2>
+      <div class="cols c3">
+        <div class="box">
+          <h3>Stack</h3>
+          <ul class="small">
+            <li>Go + gin services</li>
+            <li>Docker, Terraform, ECS Fargate, ALB</li>
+            <li>Redis for task state and queue</li>
+            <li>Locust, Prometheus, Grafana, CloudWatch</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h3>Risks</h3>
+          <ul class="small">
+            <li><b>LLM cost and noise:</b> mock LLM, one real-API check run.</li>
+            <li><b>AWS account vCPU limits:</b> small tasks, same total budget for every variant.</li>
+            <li><b>Noisy cloud results:</b> 3 repeats, report median and spread.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h3>Milestones</h3>
+          <ul class="small mono">
+            <li>11/23 · charter, monolith on ECS</li>
+            <li>early Dec · 4 variants, Exp 1</li>
+            <li>mid Dec · Exp 2</li>
+            <li>12/14 · report + talk</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="notes"><b>Say:</b> Optional. Use it if you have time left, or keep it as a backup slide for questions.</p>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  var frames = Array.prototype.slice.call(document.querySelectorAll(".frame"));
+  var count = document.getElementById("count");
+  var marksBtn = document.getElementById("toggleMarks");
+  var presentBtn = document.getElementById("present");
+  var current = 0;
+
+  function setCount(i) { current = i; count.textContent = (i + 1) + " / " + frames.length; }
+
+  function nearest() {
+    var best = 0, bestDist = Infinity;
+    frames.forEach(function (f, i) {
+      var d = Math.abs(f.getBoundingClientRect().top - 80);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    return best;
+  }
+  window.addEventListener("scroll", function () { setCount(nearest()); }, { passive: true });
+
+  function go(i) {
+    i = Math.max(0, Math.min(frames.length - 1, i));
+    frames[i].scrollIntoView({ block: "start" });
+    setCount(i);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.target.closest && e.target.closest("summary, button")) {
+      if (e.key === " " || e.key === "Enter") return;
+    }
+    if (["ArrowRight", "ArrowDown", "PageDown", " "].indexOf(e.key) >= 0) { e.preventDefault(); go(nearest() + 1); }
+    else if (["ArrowLeft", "ArrowUp", "PageUp"].indexOf(e.key) >= 0) { e.preventDefault(); go(nearest() - 1); }
+    else if (e.key === "Escape" && document.body.classList.contains("present")) { setPresent(false); }
+  });
+
+  function setMarks(show) {
+    document.body.classList.toggle("hide-marks", !show);
+    marksBtn.setAttribute("aria-pressed", String(show));
+    marksBtn.textContent = show ? "Showing added content" : "Show added content";
+    try { localStorage.setItem("deck-marks", show ? "1" : "0"); } catch (err) {}
+  }
+  marksBtn.addEventListener("click", function () { setMarks(document.body.classList.contains("hide-marks")); });
+  try { if (localStorage.getItem("deck-marks") === "0") setMarks(false); } catch (err) {}
+
+  function setPresent(on) {
+    var at = nearest();
+    document.body.classList.toggle("present", on);
+    document.documentElement.classList.toggle("present-root", on);
+    if (on) {
+      try {
+        var req = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+        if (req && req.catch) req.catch(function () {});
+      } catch (err) {}
+    } else if (document.fullscreenElement) {
+      try { document.exitFullscreen(); } catch (err) {}
+    }
+    requestAnimationFrame(function () { go(at); });
+  }
+  presentBtn.addEventListener("click", function () { setPresent(true); });
+  document.addEventListener("fullscreenchange", function () {
+    if (!document.fullscreenElement && document.body.classList.contains("present")) setPresent(false);
+  });
+
+  setCount(0);
+})();
+</script>
